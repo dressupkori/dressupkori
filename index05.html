@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DressUpKori — Virtual Try-On</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0c0c0e;--surface:#141418;--surface2:#1c1c22;--border:#2a2a35;
+  --gold:#c9a84c;--gold-light:#e8c96a;--gold-dim:rgba(201,168,76,0.12);
+  --text:#f0ede8;--muted:#7a7a8c;--radius:16px;--radius-sm:10px;
+  --header-h:66px;--footer-h:44px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+
+html,body{height:100%;overflow:hidden;}
+
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  display:flex;flex-direction:column;
+}
+body::before{content:'';position:fixed;top:-200px;left:-200px;width:600px;height:600px;background:radial-gradient(circle,rgba(201,168,76,0.07) 0%,transparent 70%);pointer-events:none;z-index:0;}
+body::after{content:'';position:fixed;bottom:-200px;right:-200px;width:500px;height:500px;background:radial-gradient(circle,rgba(100,120,200,0.05) 0%,transparent 70%);pointer-events:none;z-index:0;}
+
+/* ── HEADER ── */
+header{
+  position:relative;z-index:10;flex-shrink:0;
+  height:var(--header-h);
+  padding:0 32px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);
+  background:rgba(12,12,14,0.92);backdrop-filter:blur(14px);
+}
+.logo{display:flex;align-items:center;gap:11px;}
+.logo-icon{width:30px;height:30px;color:var(--gold);}
+.logo-text{font-family:'Playfair Display',serif;font-size:19px;font-weight:700;background:linear-gradient(135deg,var(--gold-light),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.logo-sub{font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-top:1px;}
+.steps-indicator{display:flex;align-items:center;gap:8px;}
+.step-pill{padding:4px 12px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);transition:all .3s;font-size:11px;font-weight:500;display:flex;align-items:center;gap:5px;}
+.step-pill.active{background:var(--gold-dim);border-color:rgba(201,168,76,.4);color:var(--gold);}
+.step-pill.done{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.3);color:#4ade80;}
+.step-arrow{color:var(--border);font-size:13px;}
+
+/* ── MAIN — fills remaining height exactly ── */
+main{
+  position:relative;z-index:5;
+  flex:1;min-height:0; /* key: allows shrinking */
+  display:grid;
+  grid-template-columns:1fr 360px;
+  gap:20px;
+  padding:16px 32px;
+}
+
+/* ── LEFT PANEL ── */
+.tryon-panel{
+  display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;min-height:0;
+}
+.panel-header{
+  flex-shrink:0;
+  padding:12px 18px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.panel-header h2{font-family:'Playfair Display',serif;font-size:14px;font-weight:600;}
+.panel-status{font-size:10px;font-weight:500;padding:3px 9px;border-radius:12px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);transition:all .3s;}
+.panel-status.ready{background:rgba(34,197,94,.1);color:#4ade80;border-color:rgba(34,197,94,.3);}
+
+/* display area fills all remaining height in panel */
+.tryon-display{
+  flex:1;min-height:0;
+  position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* All states fill the display area */
+#state-upload,#state-model,#state-result{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+}
+#state-upload{flex-direction:column;gap:0;padding:24px;}
+#state-loading{
+  position:absolute;inset:0;z-index:10;
+  background:var(--surface);
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+}
+#state-loading.active{display:flex;}
+
+/* STATE 1 — Upload */
+.upload-zone{
+  width:100%;max-width:320px;border:2px dashed var(--border);
+  border-radius:var(--radius);padding:36px 24px;
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  cursor:pointer;transition:all .3s;position:relative;overflow:hidden;
+}
+.upload-zone::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(201,168,76,.04) 0%,transparent 60%);opacity:0;transition:opacity .3s;}
+.upload-zone:hover{border-color:rgba(201,168,76,.5);transform:scale(1.01);}
+.upload-zone:hover::before{opacity:1;}
+.upload-zone:hover .upload-icon-wrap{background:var(--gold-dim);border-color:rgba(201,168,76,.4);}
+.upload-icon-wrap{width:64px;height:64px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--gold);transition:all .3s;position:relative;}
+.upload-icon-wrap svg{width:26px;height:26px;}
+.pulse-ring{position:absolute;inset:-8px;border-radius:50%;border:1px solid rgba(201,168,76,.2);animation:pulse-out 2s ease-out infinite;}
+.pulse-ring:nth-child(2){animation-delay:.7s;}
+@keyframes pulse-out{0%{transform:scale(.9);opacity:.6;}100%{transform:scale(1.4);opacity:0;}}
+.upload-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:600;color:var(--text);text-align:center;}
+.upload-sub{font-size:11px;color:var(--muted);text-align:center;line-height:1.6;}
+.btn-upload{padding:10px 24px;background:linear-gradient(135deg,var(--gold),#a8772a);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:7px;transition:all .25s;position:relative;z-index:1;}
+.btn-upload:hover{transform:translateY(-2px);box-shadow:0 5px 18px rgba(201,168,76,.35);}
+.upload-hint{margin-top:10px;font-size:10px;color:#444;text-align:center;}
+.upload-hint span{color:var(--gold);}
+
+/* STATE 2 — Model */
+#state-model img{width:100%;height:100%;object-fit:contain;object-position:center;}
+.model-overlay{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);border:1px solid rgba(201,168,76,.3);color:var(--gold);font-size:10px;font-weight:500;padding:4px 10px;border-radius:20px;display:flex;align-items:center;gap:5px;}
+.dot-green{width:5px;height:5px;border-radius:50%;background:#4ade80;animation:blink 1.5s ease infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.btn-change{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);border:1px solid var(--border);color:var(--muted);font-size:10px;padding:4px 10px;border-radius:20px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;}
+.btn-change:hover{border-color:var(--gold);color:var(--gold);}
+
+/* STATE 3 — Loading */
+.hanger-anim{color:var(--gold);animation:spin 1s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--gold);}
+.dot-anim::after{content:'.';animation:dots 1.2s steps(1) infinite;}
+@keyframes dots{0%,20%{content:'.'}40%{content:'..'}60%,100%{content:'...'}}
+.progress-bar{width:180px;height:2px;background:var(--border);border-radius:10px;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-light));width:0%;border-radius:10px;transition:width 2s ease;}
+
+/* STATE 4 — Result */
+#state-result img{width:100%;height:100%;object-fit:contain;object-position:center;opacity:0;transition:opacity .5s ease;}
+#state-result img.show{opacity:1;}
+.result-label{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);border:1px solid rgba(201,168,76,.3);color:var(--gold);font-size:10px;font-weight:500;padding:4px 10px;border-radius:20px;display:flex;align-items:center;gap:5px;}
+.ai-badge{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);border:1px solid rgba(201,168,76,.3);color:var(--gold);font-size:9px;padding:4px 9px;border-radius:20px;letter-spacing:.4px;}
+.btn-change-result{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);border:1px solid var(--border);color:var(--muted);font-size:10px;padding:4px 10px;border-radius:20px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;}
+/* .btn-change-result{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);border:1px solid var(--border);color:var(--muted);font-size:10px;padding:4px 10px;border-radius:20px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;} */
+.btn-change-result:hover{border-color:var(--gold);color:var(--gold);}
+
+/* Panel footer */
+.panel-footer{flex-shrink:0;padding:10px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.footer-info{font-size:11px;color:var(--muted);}
+.footer-info b{color:var(--text);font-weight:500;}
+.action-btns{display:flex;gap:6px;}
+.btn-ghost{background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:10px;padding:5px 10px;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;}
+.btn-ghost:hover{border-color:var(--gold);color:var(--gold);}
+
+/* ── RIGHT PANEL ── */
+.selector-panel{
+  display:flex;flex-direction:column;gap:10px;
+  min-height:0; /* allow shrinking */
+}
+.selector-header h2{font-family:'Playfair Display',serif;font-size:17px;font-weight:600;}
+.selector-header p{font-size:11px;color:var(--muted);margin-top:3px;}
+
+/* TRY ON BUTTON — at top of clothes section */
+.cta-wrap{flex-shrink:0;}
+.btn-tryon{
+  width:100%;padding:13px;
+  background:linear-gradient(135deg,var(--gold),#a8772a);
+  border:none;border-radius:var(--radius-sm);
+  color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;
+  transition:all .25s;
+}
+.btn-tryon:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 7px 22px rgba(201,168,76,.4);}
+.btn-tryon:active:not(:disabled){transform:translateY(0);}
+.btn-tryon:disabled{background:var(--surface2);color:#3a3a4a;cursor:not-allowed;border:1px solid var(--border);}
+
+/* Grid wrapper + lock */
+.grid-wrapper{flex:1;min-height:0;position:relative;}
+.grid-lock{
+  position:absolute;inset:0;z-index:5;
+  background:rgba(12,12,14,.78);backdrop-filter:blur(3px);
+  border-radius:var(--radius-sm);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  transition:opacity .4s;
+}
+.grid-lock.hidden{opacity:0;pointer-events:none;}
+.lock-text{font-size:11px;color:var(--muted);text-align:center;line-height:1.5;}
+
+/* Clothes grid — scrollable inside its container */
+.clothes-grid{
+  height:100%;
+  overflow-y:auto;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  padding-right:3px;
+  align-content:start;
+}
+.clothes-grid::-webkit-scrollbar{width:3px;}
+.clothes-grid::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px;}
+
+.cloth-card{
+  background:var(--surface);border:2px solid var(--border);
+  border-radius:var(--radius-sm);overflow:hidden;cursor:pointer;
+  transition:all .25s;position:relative;
+}
+.cloth-card:hover{border-color:rgba(201,168,76,.4);transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.4);}
+.cloth-card.selected{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold),0 6px 20px rgba(201,168,76,.2);}
+.cloth-card.selected .check-mark{display:flex;}
+.check-mark{display:none;position:absolute;top:6px;right:6px;width:18px;height:18px;background:var(--gold);border-radius:50%;align-items:center;justify-content:center;z-index:5;}
+.check-mark svg{width:9px;height:9px;color:#000;}
+.cloth-img-wrap{width:100%;aspect-ratio:3/4;overflow:hidden;background:var(--surface2);}
+.cloth-img-wrap img{width:100%;height:100%;object-fit:cover;object-position:top;transition:transform .3s;}
+.cloth-card:hover .cloth-img-wrap img{transform:scale(1.05);}
+.cloth-info{padding:7px 9px;}
+.cloth-name{font-size:11px;font-weight:500;color:var(--text);line-height:1.3;}
+.cloth-type{font-size:9px;color:var(--muted);margin-top:1px;}
+
+/* ── FOOTER ── */
+footer{
+  flex-shrink:0;
+  height:var(--footer-h);
+  display:flex;align-items:center;justify-content:center;
+  border-top:1px solid var(--border);font-size:11px;color:#444;
+  position:relative;z-index:5;
+}
+footer span{color:var(--gold);}
+
+/* ══════════════════════════════════
+   FLOATING MODEL PICKER MODAL
+══════════════════════════════════ */
+.modal-backdrop{
+  position:fixed;inset:0;z-index:1000;
+  background:rgba(0,0,0,.78);backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  opacity:0;pointer-events:none;transition:opacity .3s ease;
+}
+.modal-backdrop.open{opacity:1;pointer-events:all;}
+.modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  width:100%;max-width:660px;max-height:88vh;
+  display:flex;flex-direction:column;overflow:hidden;
+  transform:scale(.94) translateY(12px);
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 40px 80px rgba(0,0,0,.6);
+}
+.modal-backdrop.open .modal{transform:scale(1) translateY(0);}
+.modal-header{padding:20px 22px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.modal-header-left h3{font-family:'Playfair Display',serif;font-size:17px;font-weight:600;}
+.modal-header-left p{font-size:11px;color:var(--muted);margin-top:3px;}
+.modal-close{width:32px;height:32px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:14px;}
+.modal-close:hover{background:rgba(255,80,80,.1);border-color:rgba(255,80,80,.3);color:#ff5050;}
+.modal-body{padding:18px 22px;overflow-y:auto;flex:1;}
+.modal-body::-webkit-scrollbar{width:4px;}
+.modal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px;}
+.model-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.model-card{border:2px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;cursor:pointer;position:relative;transition:all .25s;aspect-ratio:3/4;background:var(--surface2);}
+.model-card:hover{border-color:rgba(201,168,76,.5);transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,.5);}
+.model-card.selected{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 10px 28px rgba(201,168,76,.25);}
+.model-card img{width:100%;height:100%;object-fit:cover;object-position:top;transition:transform .3s;}
+.model-card:hover img{transform:scale(1.04);}
+.model-check{position:absolute;inset:0;background:rgba(201,168,76,.12);display:flex;align-items:flex-start;justify-content:flex-end;padding:8px;opacity:0;transition:opacity .2s;}
+.model-card.selected .model-check{opacity:1;}
+.model-check-badge{width:24px;height:24px;background:var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);}
+.model-check-badge svg{width:12px;height:12px;color:#000;}
+.model-card-label{position:absolute;bottom:0;left:0;right:0;padding:18px 8px 7px;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 100%);font-size:9px;color:rgba(240,237,232,.7);text-align:center;}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;}
+.modal-selected-hint{font-size:11px;color:var(--muted);}
+.modal-selected-hint b{color:var(--gold);}
+.modal-actions{display:flex;gap:10px;align-items:center;}
+.btn-modal-cancel{background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:12px;padding:9px 18px;border-radius:var(--radius-sm);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;}
+.btn-modal-cancel:hover{border-color:var(--gold);color:var(--text);}
+.btn-modal-ok{background:linear-gradient(135deg,var(--gold),#a8772a);border:none;color:#000;font-size:12px;font-weight:600;padding:9px 26px;border-radius:var(--radius-sm);cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:7px;transition:all .25s;}
+.btn-modal-ok:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 16px rgba(201,168,76,.35);}
+.btn-modal-ok:disabled{background:var(--surface2);color:#3a3a4a;cursor:not-allowed;}
+
+/* ── MOBILE ── */
+@media(max-width:768px){
+  html,body{overflow:auto;}
+  header{padding:12px 16px;height:auto;}
+  .steps-indicator{display:none;}
+  main{
+    grid-template-columns:1fr;
+    padding:12px 16px;
+    gap:14px;
+    flex:none;
+    height:auto;
+  }
+  .tryon-display{height:55vw;min-height:260px;flex:none;}
+  .clothes-grid{height:auto;max-height:none;grid-template-columns:repeat(3,1fr);}
+  .grid-wrapper{height:auto;flex:none;}
+  .selector-panel{flex:none;}
+  .model-grid{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ MODAL ══ -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <h3>Select your image</h3>
+        <!-- <h3>Choose Your Model</h3> -->
+        <p>Select one photo to use in the try-on preview</p>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="model-grid" id="model-grid"></div>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-selected-hint" id="modal-hint">No model selected yet</div>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-modal-ok" id="btn-ok" disabled onclick="confirmModel()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20,6 9,17 4,12"/></svg>
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HEADER ══ -->
+<header>
+  <div class="logo">
+    <svg class="logo-icon" viewBox="0 0 36 36" fill="none">
+      <path d="M18 5C18 5 12 9 6 9L9 27 12 29 18 29 24 29 27 27 30 9C24 9 18 5 18 5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M12 9L9 13M24 9L27 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="18" cy="3" r="2" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M18 5V3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <div class="logo-text">DressUpKori</div>
+      <div class="logo-sub">দেখো আগে, কিনো পরে</div>
+    </div>
+  </div>
+  <div class="steps-indicator">
+    <div class="step-pill" id="pill-1">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Select Model
+    </div>
+    <span class="step-arrow">›</span>
+    <div class="step-pill" id="pill-2">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      Choose Outfit
+    </div>
+    <span class="step-arrow">›</span>
+    <div class="step-pill" id="pill-3">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+      Try It On
+    </div>
+  </div>
+</header>
+
+<!-- ══ MAIN ══ -->
+<main>
+
+  <!-- LEFT: Try-On Preview -->
+  <div class="tryon-panel">
+    <div class="panel-header">
+      <h2>Try-On Preview</h2>
+      <div class="panel-status" id="panel-status">No model selected</div>
+    </div>
+
+    <div class="tryon-display">
+
+      <!-- STATE 1: Upload box -->
+      <div id="state-upload">
+        <div class="upload-zone" onclick="openModal()">
+          <div class="upload-icon-wrap">
+            <div class="pulse-ring"></div><div class="pulse-ring"></div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="upload-title">আপনার ছবি আপলোড করুন</div>
+          <div class="upload-sub">Choose your photo to start trying on clothes</div>
+          <button class="btn-upload" onclick="event.stopPropagation();openModal()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload Photo
+          </button>
+        </div>
+        <div class="upload-hint">Your photo is <span>private</span> — never stored on any server</div>
+      </div>
+
+      <!-- STATE 2: Model shown -->
+      <div id="state-model" style="display:none;">
+        <img id="model-base-img" src="" alt="Model"/>
+        <div class="model-overlay">
+          <div class="dot-green"></div>
+          <span id="model-overlay-name">Model Ready</span>
+        </div>
+        <button class="btn-change" onclick="openModal()">↩ Change</button>
+      </div>
+
+      <!-- STATE 3: Loading -->
+      <div id="state-loading">
+        <svg class="hanger-anim" width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z"/>
+        </svg>
+        <div class="loading-text">Fitting your outfit<span class="dot-anim"></span></div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+
+      <!-- STATE 4: Result -->
+      <div id="state-result" style="display:none;">
+        <img id="result-img" src="" alt="Try-on result"/>
+        <!-- <div class="result-label"> -->
+        <!--   <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> -->
+        <!--   Try-On Result -->
+        <!-- </div> -->
+        <!-- <button class="btn-change-result" onclick="openModal()">↩ Change Model</button> -->
+        <button class="btn-change-result" onclick="openModal()">↩ Change Photo</button>
+        <div class="ai-badge">DressUpKori AI</div>
+      </div>
+
+    </div>
+
+    <div class="panel-footer">
+      <div class="footer-info" id="footer-info">Select your photo to begin</div>
+      <!-- <div class="footer-info" id="footer-info">Select a model photo to begin</div> -->
+      <div class="action-btns" id="action-btns" style="display:none;">
+        <button class="btn-ghost">❤️ Save</button>
+        <button class="btn-ghost">📤 Share</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Outfit Selector -->
+  <div class="selector-panel">
+    <div class="selector-header">
+      <h2>Choose Outfit</h2>
+      <!-- <p id="selector-hint">Select a model first to unlock</p> -->
+      <p id="selector-hint">Upload your image first to unlock</p>
+    </div>
+
+    <!-- ✅ Try It On button at TOP -->
+    <div class="cta-wrap">
+      <button class="btn-tryon" id="btn-tryon" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+        <span id="btn-text">Select a Model First</span>
+      </button>
+    </div>
+
+    <!-- Clothes grid below button -->
+    <div class="grid-wrapper">
+      <div class="grid-lock" id="grid-lock">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)">
+          <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+        <div class="lock-text">Select a model photo<br/>to browse outfits</div>
+      </div>
+      <div class="clothes-grid" id="clothes-grid"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  DressUpKori MVP &nbsp;—&nbsp; Built with ❤️ for <span>Bangladeshi Fashion</span> &nbsp;|&nbsp; © 2025 DressUpKori
+</footer>
+
+<script>
+const models = [
+  // { id:'m1', name:'Look 1 — Black Tee',     img:'man_wearing_black_202603291519.jpeg' },
+  // { id:'m2', name:'Look 2 — Orange Tee',    img:'man_wearing_orange_202603291439.jpeg' },
+  // { id:'m3', name:'Look 3 — Blue Shirt',    img:'man_waeing_the_202603291441.jpeg' },
+  { id:'m4', name:'',    img:'Young_man_standing_202603291439.jpeg' },
+  // { id:'m4', name:'Look 4 — Navy Shirt',    img:'Young_man_standing_202603291439.jpeg' },
+  // { id:'m5', name:'Look 5 — Green Panjabi', img:'Man_wearing_panjabi_202603291507.jpeg' },
+  // { id:'m6', name:'Look 6 — Coffee Hoodie', img:'man_wearing_the_202603291443.jpeg' },
+];
+const products = [
+  { id:1, name:'Black T-Shirt',     type:'কেজুয়াল টি-শার্ট',    productImg:'Black_shirt_on_202603291512.jpeg',          resultImg:'man_wearing_black_202603291519.jpeg' },
+  { id:2, name:'Coffee Hoodie',     type:'হুডি সোয়েটার',        productImg:'Coffee_color_hoodie_202603291521.jpeg',     resultImg:'man_wearing_the_202603291443.jpeg' },
+  // { id:2, name:'Orange T-Shirt',    type:'কেজুয়াল টি-শার্ট',    productImg:'a_orange_t-shirt_202603291439.jpeg',        resultImg:'man_wearing_orange_202603291439.jpeg' },
+  { id:3, name:'Blue Casual Shirt', type:'শর্ট স্লিভ শার্ট',    productImg:'a_casual_shirt_202603291521.jpeg',          resultImg:'man_waeing_the_202603291441.jpeg' },
+  // { id:4, name:'Navy Blue Shirt',   type:'ফুল স্লিভ শার্ট',     productImg:'Young_man_standing_202603291439.jpeg',      resultImg:'Young_man_standing_202603291439.jpeg' },
+  { id:4, name:'Green Panjabi',     type:'এমব্রয়ডারি পাঞ্জাবি', productImg:'Maroon_panjabi_showcase_202603291521.jpeg', resultImg:'Man_wearing_panjabi_202603291507.jpeg' },
+  // { id:6, name:'Coffee Hoodie',     type:'হুডি সোয়েটার',        productImg:'Coffee_color_hoodie_202603291521.jpeg',     resultImg:'man_wearing_the_202603291443.jpeg' },
+  { id:5, name:'Orange T-Shirt',    type:'কেজুয়াল টি-শার্ট',    productImg:'a_orange_t-shirt_202603291439.jpeg',        resultImg:'man_wearing_orange_202603291439.jpeg' },
+];
+
+let selectedModelInModal = null;
+let confirmedModel = null;
+let selectedProduct = null;
+let isLoading = false;
+
+const backdrop     = document.getElementById('modal-backdrop');
+const modalHint    = document.getElementById('modal-hint');
+const btnOk        = document.getElementById('btn-ok');
+const btnTryon     = document.getElementById('btn-tryon');
+const btnText      = document.getElementById('btn-text');
+const footerInfo   = document.getElementById('footer-info');
+const actionBtns   = document.getElementById('action-btns');
+const gridLock     = document.getElementById('grid-lock');
+const panelStatus  = document.getElementById('panel-status');
+const selectorHint = document.getElementById('selector-hint');
+const progressFill = document.getElementById('progress-fill');
+const resultImg    = document.getElementById('result-img');
+const pill1 = document.getElementById('pill-1');
+const pill2 = document.getElementById('pill-2');
+const pill3 = document.getElementById('pill-3');
+
+// Build modal model grid
+const modelGrid = document.getElementById('model-grid');
+models.forEach(m => {
+  const card = document.createElement('div');
+  card.className = 'model-card';
+  card.dataset.id = m.id;
+  card.innerHTML = `
+    <img src="${m.img}" alt="${m.name}" loading="lazy"/>
+    <div class="model-check">
+      <div class="model-check-badge">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,7 6,11 12,3"/></svg>
+      </div>
+    </div>
+    <div class="model-card-label">${m.name}</div>`;
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedModelInModal = m;
+    modalHint.innerHTML = `Selected: <b>${m.name}</b>`;
+    btnOk.disabled = false;
+  });
+  modelGrid.appendChild(card);
+});
+
+// Build clothes grid
+const clothGrid = document.getElementById('clothes-grid');
+products.forEach(p => {
+  const card = document.createElement('div');
+  card.className = 'cloth-card';
+  card.innerHTML = `
+    <div class="check-mark">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>
+    </div>
+    <div class="cloth-img-wrap"><img src="${p.productImg}" alt="${p.name}" loading="lazy"/></div>
+    <div class="cloth-info">
+      <div class="cloth-name">${p.name}</div>
+      <div class="cloth-type">${p.type}</div>
+    </div>`;
+  card.addEventListener('click', () => {
+    if (!confirmedModel || isLoading) return;
+    document.querySelectorAll('.cloth-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedProduct = p;
+    footerInfo.innerHTML = `Selected: <b>${p.name}</b>`;
+    btnTryon.disabled = false;
+    btnText.textContent = 'Try It On';
+    pill2.classList.add('done'); pill3.classList.add('active');
+  });
+  clothGrid.appendChild(card);
+});
+
+function showState(name) {
+  document.getElementById('state-upload').style.display  = name==='upload'  ? 'flex'  : 'none';
+  document.getElementById('state-model').style.display   = name==='model'   ? 'block' : 'none';
+  document.getElementById('state-loading').style.display = name==='loading' ? 'flex'  : 'none';
+  document.getElementById('state-result').style.display  = name==='result'  ? 'block' : 'none';
+}
+
+function openModal() {
+  if (isLoading) return;
+  selectedModelInModal = confirmedModel;
+  document.querySelectorAll('.model-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.id === (confirmedModel?.id || ''));
+  });
+  modalHint.innerHTML = confirmedModel ? `Selected: <b>${confirmedModel.name}</b>` : 'No model selected yet';
+  btnOk.disabled = !confirmedModel;
+  backdrop.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  backdrop.classList.remove('open');
+  document.body.style.overflow = '';
+  selectedModelInModal = null;
+}
+
+function confirmModel() {
+  if (!selectedModelInModal) return;
+  confirmedModel = selectedModelInModal;
+  closeModal();
+  document.getElementById('model-base-img').src = confirmedModel.img;
+  document.getElementById('model-overlay-name').textContent = confirmedModel.name;
+  showState('model');
+  panelStatus.textContent = '✓ Model Ready';
+  panelStatus.classList.add('ready');
+  footerInfo.innerHTML = `Model set — now <b>select an outfit</b>`;
+  gridLock.classList.add('hidden');
+  selectorHint.textContent = '৫টি পোশাক থেকে বেছে নিন';
+  pill1.classList.add('done'); pill2.classList.add('active');
+  // Reset outfit
+  selectedProduct = null;
+  document.querySelectorAll('.cloth-card').forEach(c => c.classList.remove('selected'));
+  actionBtns.style.display = 'none';
+  resultImg.classList.remove('show');
+  btnTryon.disabled = true;
+  btnText.textContent = 'Select an Outfit';
+  pill2.classList.remove('done'); pill3.classList.remove('active','done');
+}
+
+backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+btnTryon.addEventListener('click', () => {
+  if (!confirmedModel || !selectedProduct || isLoading) return;
+  isLoading = true;
+  btnTryon.disabled = true;
+  btnText.textContent = 'Processing...';
+  actionBtns.style.display = 'none';
+  showState('loading');
+  progressFill.style.width = '0%';
+  requestAnimationFrame(() => { progressFill.style.width = '100%'; });
+  setTimeout(() => {
+    resultImg.src = selectedProduct.resultImg;
+    resultImg.classList.remove('show');
+    showState('result');
+    requestAnimationFrame(() => requestAnimationFrame(() => { resultImg.classList.add('show'); }));
+    actionBtns.style.display = 'flex';
+    footerInfo.innerHTML = `Wearing: <b>${selectedProduct.name}</b>`;
+    btnTryon.disabled = false;
+    btnText.textContent = 'Try Another';
+    pill3.classList.remove('active'); pill3.classList.add('done');
+    isLoading = false;
+  }, 2000);
+});
+</script>
+</body>
+</html>
